@@ -196,6 +196,12 @@ function renderPortfolio(filter) {
         </button>`).join('')}
     </div>`;
 
+  const lastUpdNote = APP_DATA.lastQuoteUpdate
+    ? `<div class="quote-note"><i class="ti ti-clock" aria-hidden="true"></i> Quotazioni: ${_timeAgo(APP_DATA.lastQuoteUpdate)} · <span class="section-link" onclick="refreshQuotes()">Aggiorna</span></div>`
+    : typeof QUOTES !== 'undefined' && QUOTES.isConfigured()
+      ? `<div class="quote-note warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Prezzi non aggiornati · <span class="section-link" onclick="refreshQuotes()">Aggiorna ora</span></div>`
+      : '';
+
   const summaryBar = `
     <div class="summary-bar">
       <div class="summary-item">
@@ -212,12 +218,23 @@ function renderPortfolio(filter) {
         <div class="summary-label">G/P</div>
         <div class="summary-value ${glClass(fGL)}">${pct(fGLP)}</div>
       </div>
-    </div>`;
+    </div>${lastUpdNote}`;
 
   const portList = `
     <div class="port-list">
       ${items.map(i => {
-        const col = TYPE_COLORS[i.type];
+        const col      = TYPE_COLORS[i.type];
+        const hasPrc   = i.priceUpdated;
+        const dayPos   = (i.dayChangePct || 0) >= 0;
+        const dayRow   = hasPrc ? `
+          <div class="port-day">
+            <span class="${dayPos ? 'text-gain' : 'text-loss'}">
+              <i class="ti ${dayPos ? 'ti-trending-up' : 'ti-trending-down'}" aria-hidden="true"></i>
+              ${dayPos ? '+' : ''}${(i.dayChangePct||0).toFixed(2)}%
+              (${(i.dayChange||0) >= 0 ? '+' : ''}${eur(i.dayChange||0, 2)})
+            </span>
+            <span class="price-age">${_timeAgo(i.priceUpdated)}</span>
+          </div>` : '';
         return `
           <div class="port-item" style="border-left-color:${col};">
             <div class="port-header">
@@ -228,7 +245,7 @@ function renderPortfolio(filter) {
                         style="background:${col}18;color:${col};">${i.type}</span>
                   <span class="port-name">${i.name}</span>
                 </div>
-                <div class="port-ticker">${i.ticker}</div>
+                <div class="port-ticker">${i.ticker}${i.priceSource === 'custom' ? ' <span style="font-size:10px;color:var(--c-amber);">★ custom</span>' : ''}</div>
               </div>
             </div>
             <div class="port-stats">
@@ -245,10 +262,11 @@ function renderPortfolio(filter) {
                 <div class="stat-val">${eur(i.totalValue)}</div>
               </div>
               <div>
-                <div class="stat-lbl">G/P</div>
+                <div class="stat-lbl">G/P tot.</div>
                 <div class="stat-val ${glClass(i.gl)}">${pct(i.glPct)}</div>
               </div>
             </div>
+            ${dayRow}
           </div>`;
       }).join('')}
     </div>`;
@@ -412,11 +430,65 @@ function renderSettings() {
            </div>`}`;
 
   /* === Righe impostazioni generali === */
-  const rows = [
-    { icon:'ti-chart-line',  bg:'#1D9E7518', col:'#1D9E75', label:'Quotazioni e ticker', sub:'Yahoo Finance + URL custom — Fase 4', action:'' },
-    { icon:'ti-file-text',   bg:'#D85A3018', col:'#D85A30', label:'Importa CSV banche',  sub:'Fineco, ISP, ING — Fase 5',            action:'' },
-    { icon:'ti-download',    bg:'#88878018', col:'#888780', label:'Esporta backup',        sub:'Salva copia JSON cifrata AES-256',      action:'storage.save()' },
-  ];
+  const workerUrl    = typeof QUOTES !== 'undefined' ? QUOTES.getWorkerUrl() : '';
+  const autoRefresh  = typeof QUOTES !== 'undefined' ? QUOTES.getAutoRefresh() : 0;
+
+  const quoteBlock = workerUrl ? `
+    <div class="drive-status connected" style="margin-bottom:12px;">
+      <i class="ti ti-activity" aria-hidden="true"></i>
+      <div class="drive-status-info">
+        <div class="drive-status-name">Worker attivo</div>
+        <div class="drive-status-sub" style="word-break:break-all;">${workerUrl}</div>
+      </div>
+      <button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;flex-shrink:0;"
+              onclick="clearWorkerUrl()">Rimuovi</button>
+    </div>` : `
+    <div style="margin-bottom:10px;">
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">
+        Incolla l'URL del tuo Cloudflare Worker per le quotazioni in tempo reale:
+      </p>
+      <div class="settings-input-row">
+        <input type="text" id="worker-url-input"
+               placeholder="https://pf-quotes.USERNAME.workers.dev"
+               value="${workerUrl}">
+        <button class="btn btn-primary" onclick="saveWorkerUrl()">Salva</button>
+      </div>
+    </div>`;
+
+  const autoRow = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border);">
+      <div style="font-size:13px;">Auto-aggiornamento</div>
+      <select onchange="setAutoRefresh(this.value)"
+              style="padding:5px 8px;border:0.5px solid var(--border-md);border-radius:var(--r-sm);font-size:13px;font-family:var(--font);">
+        <option value="0"  ${autoRefresh===0  ?'selected':''}>Disattivato</option>
+        <option value="5"  ${autoRefresh===5  ?'selected':''}>Ogni 5 min</option>
+        <option value="15" ${autoRefresh===15 ?'selected':''}>Ogni 15 min</option>
+        <option value="30" ${autoRefresh===30 ?'selected':''}>Ogni 30 min</option>
+      </select>
+    </div>`;
+
+  const tickerRows = `
+    <div style="padding-top:10px;border-top:0.5px solid var(--border);">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">
+        <i class="ti ti-link" aria-hidden="true"></i>
+        URL personalizzati per titoli non su Yahoo Finance (fondi, BTP, ecc.)
+      </div>
+      ${APP_DATA.portfolio.map(item => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="type-badge"
+                style="background:${TYPE_COLORS[item.type]}18;color:${TYPE_COLORS[item.type]};flex-shrink:0;">
+            ${item.ticker}
+          </span>
+          <input type="text"
+                 id="curl-${item.ticker.replace(/\./g,'_')}"
+                 placeholder="URL ZoneBourse / Borsa Italiana / Morningstar"
+                 value="${item.customUrl || ''}"
+                 style="flex:1;padding:6px 10px;border:0.5px solid var(--border-md);border-radius:var(--r-sm);font-size:12px;font-family:var(--font);">
+          <button class="btn btn-secondary"
+                  style="padding:5px 10px;font-size:12px;flex-shrink:0;"
+                  onclick="saveCustomUrl('${item.ticker}')">✓</button>
+        </div>`).join('')}
+    </div>`;
 
   const rowsHTML = rows.map(r => `
     <div class="settings-row" ${r.action ? `onclick="${r.action}"` : ''}>
@@ -486,6 +558,17 @@ function renderSettings() {
           </div>
           <i class="ti ti-chevron-right" style="color:var(--text-tertiary);" aria-hidden="true"></i>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <i class="ti ti-activity" aria-hidden="true"></i> Quotazioni
+          </span>
+        </div>
+        ${quoteBlock}
+        ${autoRow}
+        ${tickerRows}
       </div>
 
       <div class="card">${rowsHTML}</div>

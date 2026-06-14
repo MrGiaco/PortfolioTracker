@@ -1,15 +1,10 @@
 /* =====================================================
    app.js — Router, navigazione, init app
-   Fase 3: integrazione auth + Drive + storage
+   Fase 4: quotazioni in tempo reale via QUOTES
    ===================================================== */
 
-/* ===== STATO APPLICAZIONE ===== */
-const state = {
-  section: 'dashboard',
-  filter:  'Tutti',
-};
+const state = { section: 'dashboard', filter: 'Tutti' };
 
-/* ===== UTILITÀ DOM ===== */
 function $(id)    { return document.getElementById(id); }
 function $$(sel)  { return document.querySelectorAll(sel); }
 function isDesk() { return window.innerWidth >= 768; }
@@ -30,32 +25,22 @@ function setFilter(filter) {
 }
 
 /* =====================================================
-   RENDER PRINCIPALE
+   RENDER
    ===================================================== */
 function renderApp() {
-  if (!auth.isUnlocked()) return; // Non renderizzare se bloccato
-
+  if (!auth.isUnlocked()) return;
   const desk  = isDesk();
   const sec   = state.section;
   const title = SECTION_TITLES[sec];
 
-  // Titolo topbar mobile
   const ptEl = $('page-title');    if (ptEl) ptEl.textContent = title;
   const psEl = $('page-subtitle'); if (psEl) psEl.textContent = 'dom 14 giugno 2026';
-
-  // Titolo header desktop
   const dtEl = $('desktop-title'); if (dtEl) dtEl.textContent = title;
-
-  // Patrimonio sidebar
   const stEl = $('sidebar-total'); if (stEl) stEl.textContent = eur(patrimony);
 
-  // Nav items attivi
   $$('[data-section]').forEach(el => el.classList.toggle('active', el.dataset.section === sec));
-
-  // Nascondi tutte le sezioni
   $$('.section').forEach(s => s.classList.remove('active'));
 
-  // Rendi sezione attiva
   destroyDonut();
   const container = $(`section-${sec}`);
   if (!container) return;
@@ -64,10 +49,7 @@ function renderApp() {
   switch (sec) {
     case 'dashboard':
       container.innerHTML = renderDashboard(desk);
-      setTimeout(() => {
-        initDonut('donut-chart');
-        animateCounter('hero-val', patrimony);
-      }, 50);
+      setTimeout(() => { initDonut('donut-chart'); animateCounter('hero-val', patrimony); }, 50);
       break;
     case 'portfolio':    container.innerHTML = renderPortfolio(state.filter); break;
     case 'accounts':     container.innerHTML = renderAccounts();              break;
@@ -95,14 +77,10 @@ function animateCounter(elId, target, duration = 1200) {
 /* =====================================================
    GESTIONE EVENTI AUTH
    ===================================================== */
-
-// Sblocco completato (PIN corretto o setup terminato)
 window.addEventListener('auth:unlocked', async (e) => {
-  const isFresh = e.detail?.fresh; // true = nuovo setup
-
+  const isFresh = e.detail?.fresh;
   AUTH_UI.hide();
 
-  // Carica dati da Drive (se connesso) o da cache locale
   if (!isFresh) {
     showGlobalLoader('Caricamento dati…');
     try {
@@ -114,73 +92,54 @@ window.addEventListener('auth:unlocked', async (e) => {
     }
     hideGlobalLoader();
   } else {
-    // Primo avvio: salva i dati mock su Drive (se connesso)
     await storage.save();
   }
 
   renderApp();
+
+  // Avvia auto-refresh se configurato
+  if (QUOTES.isConfigured()) {
+    QUOTES.startAutoRefresh();
+    // Refresh automatico all'avvio se i dati sono vecchi (> 10 min)
+    const lastUpd = APP_DATA.lastQuoteUpdate;
+    const stale   = !lastUpd || (Date.now() - new Date(lastUpd)) > 10 * 60_000;
+    if (stale) setTimeout(() => QUOTES.refresh(), 1500);
+  }
 });
 
-// Drive connesso → sincronizza
-window.addEventListener('drive:connected', async () => {
-  showToast('✓ Google Drive connesso', 'success');
-  await storage.sync();
-  renderApp(); // Aggiorna sezione impostazioni
-});
-
-// Drive disconnesso
-window.addEventListener('drive:disconnected', () => {
-  showToast('Drive disconnesso', 'info');
-  renderApp();
-});
-
-// Client ID non configurato
-window.addEventListener('drive:need_client_id', () => {
-  navigate('settings');
-  showToast('Configura prima il Client ID Google in Impostazioni.', 'info');
-});
+window.addEventListener('drive:connected',   async () => { showToast('✓ Google Drive connesso', 'success'); await storage.sync(); renderApp(); });
+window.addEventListener('drive:disconnected', ()      => { showToast('Drive disconnesso', 'info'); renderApp(); });
+window.addEventListener('drive:need_client_id', ()   => { navigate('settings'); showToast('Configura il Client ID Google in Impostazioni.', 'info'); });
+window.addEventListener('drive:error',        (e)    => { showToast('Errore Drive: ' + e.detail, 'error'); });
 
 /* =====================================================
-   TOAST NOTIFICHE
+   TOAST + LOADER
    ===================================================== */
 function showToast(msg, type = 'info') {
-  let toastEl = $('global-toast');
-  if (!toastEl) {
-    toastEl = document.createElement('div');
-    toastEl.id = 'global-toast';
-    toastEl.style.cssText = `
-      position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
-      background:#1A1A1A;color:white;padding:10px 18px;border-radius:10px;
-      font-size:13px;z-index:8000;opacity:0;transition:opacity .2s;
-      max-width:90vw;text-align:center;pointer-events:none;
-    `;
-    document.body.appendChild(toastEl);
+  let el = $('global-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'global-toast';
+    el.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:10px;font-size:13px;z-index:8000;opacity:0;transition:opacity .2s;max-width:90vw;text-align:center;pointer-events:none;color:white;';
+    document.body.appendChild(el);
   }
-  const colors = { success:'#2E7D32', error:'#D85A30', info:'#378ADD' };
-  toastEl.style.background = colors[type] || '#1A1A1A';
-  toastEl.textContent      = msg;
-  toastEl.style.opacity    = '1';
-  clearTimeout(toastEl._timer);
-  toastEl._timer = setTimeout(() => { toastEl.style.opacity = '0'; }, 3000);
+  el.style.background = { success:'#2E7D32', error:'#D85A30', info:'#378ADD' }[type] || '#1A1A1A';
+  el.textContent      = msg;
+  el.style.opacity    = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = '0'; }, 3200);
 }
 
-/* =====================================================
-   LOADER GLOBALE
-   ===================================================== */
 function showGlobalLoader(msg) {
   let el = $('global-loader');
   if (!el) {
     el = document.createElement('div');
     el.id = 'global-loader';
-    el.style.cssText = `
-      position:fixed;inset:0;background:rgba(0,0,0,.45);
-      display:flex;align-items:center;justify-content:center;
-      z-index:8500;color:white;font-size:15px;
-    `;
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:8500;color:white;font-size:15px;';
     document.body.appendChild(el);
   }
-  el.textContent = msg || 'Caricamento…';
-  el.style.display = 'flex';
+  el.textContent    = msg || 'Caricamento…';
+  el.style.display  = 'flex';
 }
 
 function hideGlobalLoader() {
@@ -189,33 +148,69 @@ function hideGlobalLoader() {
 }
 
 /* =====================================================
-   PLACEHOLDER AZIONI
+   AZIONI IMPOSTAZIONI
    ===================================================== */
-function refreshQuotes()    { showToast('Aggiornamento quotazioni — Fase 4.',   'info'); }
-function addTransaction()   { showToast('Inserimento movimenti — Fase 5.',      'info'); }
-function importCSV()        { showToast('Import CSV — Fase 5.',                 'info'); }
-function changePIN()        { auth.lock(); AUTH_UI.show('setup'); }
-function lockApp()          { auth.lock(); }
-function resetApp() {
-  if (!confirm('Eliminare tutti i dati e la configurazione?')) return;
-  auth.reset();
-  sessionStorage.clear();
-  location.reload();
-}
 
-/* =====================================================
-   IMPOSTAZIONI — Drive e PIN
-   ===================================================== */
+/* --- Drive --- */
+function connectDrive()    { drive.signIn(); }
+function disconnectDrive() { drive.signOut(); }
 function saveClientId() {
   const input = $('drive-client-id');
-  if (!input || !input.value.trim()) return;
+  if (!input?.value.trim()) return;
   drive.setClientId(input.value.trim());
   showToast('Client ID salvato', 'success');
   renderApp();
 }
 
-function connectDrive()    { drive.signIn();  }
-function disconnectDrive() { drive.signOut(); }
+/* --- Quotazioni --- */
+function saveWorkerUrl() {
+  const input = $('worker-url-input');
+  if (!input?.value.trim()) return;
+  QUOTES.setWorkerUrl(input.value.trim());
+  showToast('Worker URL salvato', 'success');
+  QUOTES.startAutoRefresh();
+  renderApp();
+}
+
+function clearWorkerUrl() {
+  QUOTES.clearWorkerUrl();
+  QUOTES.stopAutoRefresh();
+  showToast('Worker URL rimosso', 'info');
+  renderApp();
+}
+
+function setAutoRefresh(min) {
+  QUOTES.setAutoRefresh(parseInt(min));
+  QUOTES.startAutoRefresh();
+  showToast(parseInt(min) > 0 ? `Auto-refresh ogni ${min} min` : 'Auto-refresh disattivato', 'info');
+}
+
+function saveCustomUrl(ticker) {
+  const key = ticker.replace(/\./g, '_');
+  const input = $(`curl-${key}`);
+  if (!input) return;
+  const url = input.value.trim();
+  const item = APP_DATA.portfolio.find(i => i.ticker === ticker);
+  if (item) {
+    item.customUrl = url || null;
+    storage.save();
+    showToast(url ? `URL salvato per ${ticker}` : `URL rimosso per ${ticker}`, 'success');
+  }
+}
+
+/* --- Sicurezza --- */
+function refreshQuotes()  { QUOTES.refresh(); }
+function changePIN()      { auth.lock(); AUTH_UI.show('setup'); }
+function lockApp()        { auth.lock(); }
+function resetApp() {
+  if (!confirm('Eliminare tutti i dati e la configurazione?')) return;
+  QUOTES.stopAutoRefresh();
+  auth.reset();
+  sessionStorage.clear();
+  location.reload();
+}
+function addTransaction() { showToast('Inserimento movimenti — Fase 5.', 'info'); }
+function importCSV()      { showToast('Import CSV — Fase 5.', 'info'); }
 
 /* =====================================================
    EVENT LISTENERS
@@ -227,8 +222,8 @@ function initNavigation() {
 }
 
 function initDesktopButtons() {
-  const r = $('desktop-refresh'); if (r) r.addEventListener('click', refreshQuotes);
-  const a = $('desktop-add');
+  const r  = $('desktop-refresh'); if (r)  r.addEventListener('click', refreshQuotes);
+  const a  = $('desktop-add');
   if (a) a.addEventListener('click', () => {
     if (state.section === 'transactions') addTransaction();
     else if (state.section === 'portfolio') showToast('Aggiungi titolo — Fase 5.', 'info');
@@ -245,22 +240,22 @@ window.addEventListener('resize', () => {
 });
 
 /* =====================================================
-   INIZIALIZZAZIONE
+   INIT
    ===================================================== */
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initDesktopButtons();
-  initAuthKeypad();          // auth.js
-  drive.init();              // drive.js — tenta init se clientId presente
+  initAuthKeypad();
+  drive.init();
 
   if (!auth.isSetup()) {
-    AUTH_UI.show('setup');   // Prima volta: crea PIN
+    AUTH_UI.show('setup');
   } else {
-    AUTH_UI.show('unlock');  // Login normale
+    AUTH_UI.show('unlock');
   }
 });
 
-/* Esposizione globale funzioni chiamate da onclick nei template HTML */
+/* Esposizione globale per onclick nei template */
 window.navigate        = navigate;
 window.setFilter       = setFilter;
 window.refreshQuotes   = refreshQuotes;
@@ -273,3 +268,7 @@ window.resetApp        = resetApp;
 window.connectDrive    = connectDrive;
 window.disconnectDrive = disconnectDrive;
 window.saveClientId    = saveClientId;
+window.saveWorkerUrl   = saveWorkerUrl;
+window.clearWorkerUrl  = clearWorkerUrl;
+window.setAutoRefresh  = setAutoRefresh;
+window.saveCustomUrl   = saveCustomUrl;
