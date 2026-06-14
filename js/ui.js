@@ -490,6 +490,11 @@ function renderSettings() {
         </div>`).join('')}
     </div>`;
 
+  const rows = [
+    { icon:'ti-file-text', bg:'#D85A3018', col:'#D85A30', label:'Importa CSV banche', sub:'Fineco, ISP, ING — Fase 5', action:'' },
+    { icon:'ti-download',  bg:'#88878018', col:'#888780', label:'Esporta backup',       sub:'Salva copia JSON cifrata AES-256', action:'storage.save()' },
+  ];
+
   const rowsHTML = rows.map(r => `
     <div class="settings-row" ${r.action ? `onclick="${r.action}"` : ''}>
       <div class="settings-left">
