@@ -1,0 +1,400 @@
+/* =====================================================
+   ui.js — Funzioni di rendering HTML per ogni sezione
+   Restituiscono stringhe HTML; nessuna manipolazione DOM diretta.
+   ===================================================== */
+
+/* ===== HELPER: logo o monogramma titolo ===== */
+function logoBox(item) {
+  if (item.logoImg) {
+    return `<div class="port-logo">
+      <img src="${item.logoImg}" alt="${item.name}"
+           onerror="this.closest('.port-logo').innerHTML='<span>${item.logoKey || item.name.charAt(0)}</span>'">
+    </div>`;
+  }
+  const color = TYPE_COLORS[item.type];
+  return `<div class="port-logo" style="color:${color};border-color:${color}22;background:${color}12;">
+    ${item.logoKey || item.name.charAt(0)}
+  </div>`;
+}
+
+/* ===== HELPER: riga transazione ===== */
+function txnRowHTML(txn) {
+  const color  = CAT_COLORS[txn.cat] || '#888780';
+  const icon   = CAT_ICONS[txn.cat]  || 'ti-circle';
+  const amt    = txn.amount;
+  const sign   = amt >= 0 ? '+' : '';
+  const amtStr = `${sign}${eur(amt, 2)}`;
+  const cls    = amt >= 0 ? 'text-gain' : 'text-loss';
+  return `
+    <div class="txn-row">
+      <div class="txn-icon" style="background:${color}20;color:${color};">
+        <i class="ti ${icon}" aria-hidden="true"></i>
+      </div>
+      <div class="txn-info">
+        <div class="txn-desc">${txn.desc}</div>
+        <div class="txn-acc">${txn.account}</div>
+      </div>
+      <div class="txn-amount ${cls}">${amtStr}</div>
+    </div>`;
+}
+
+/* ===== HELPER: legenda allocazione ===== */
+function allocLegendHTML() {
+  return allocation.map(s => `
+    <div class="alloc-legend-item">
+      <span class="alloc-dot" style="background:${s.color};"></span>
+      <span class="alloc-lbl">${s.label}</span>
+      <span class="alloc-val">${eur(s.value)}</span>
+    </div>`).join('');
+}
+
+/* ===== HELPER: blocco G/P complessivo (solo desktop) ===== */
+function glBlockHTML() {
+  const { pV, pC, pGL, pGLP } = totals;
+  const cls  = glClass(pGL);
+  const barW = Math.min(Math.max((pV / pC - 1) * 200 + 40, 0), 100);
+  return `
+    <div class="card">
+      <div class="section-title">G/P complessivo</div>
+      <div class="metric-value ${cls}" style="font-size:28px;">${pct(pGLP)}</div>
+      <div class="metric-sub ${cls}" style="font-size:14px;margin-top:4px;">
+        ${pGL >= 0 ? '+' : ''}${eur(pGL, 2)}
+      </div>
+      <div class="gl-bar-wrap">
+        <div class="gl-bar" style="width:${barW}%;background:${glColor(pGL)};"></div>
+      </div>
+      <div class="split-row" style="font-size:11px;color:var(--text-secondary);margin-top:6px;">
+        <span>Carico: ${eur(pC)}</span>
+        <span>Attuale: ${eur(pV)}</span>
+      </div>
+    </div>`;
+}
+
+/* =====================================================
+   DASHBOARD
+   ===================================================== */
+function renderDashboard(isDesktop) {
+  const { pV, pGL, pGLP } = totals;
+
+  const hero = `
+    <div class="hero-card">
+      <p class="hero-label">Patrimonio Totale</p>
+      <p class="hero-value" id="hero-val">€0</p>
+      <div class="hero-badges">
+        <span class="hero-badge">
+          <i class="ti ti-trending-up" aria-hidden="true"></i>
+          ${pct(pGLP)} portafoglio
+        </span>
+        <span class="hero-badge">
+          <i class="ti ti-calendar" aria-hidden="true"></i>
+          14 giu 2026
+        </span>
+      </div>
+    </div>`;
+
+  const metrics = `
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-label">
+          <i class="ti ti-chart-pie" aria-hidden="true"></i> Portafoglio
+        </div>
+        <div class="metric-value">${eur(pV)}</div>
+        <div class="metric-sub ${glClass(pGL)}">${pct(pGLP)}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">
+          <i class="ti ti-wallet" aria-hidden="true"></i> Liquidità
+        </div>
+        <div class="metric-value">${eur(ccTotal)}</div>
+        <div class="metric-sub text-secondary">3 conti correnti</div>
+      </div>
+    </div>`;
+
+  const alloc = `
+    <div class="card">
+      <div class="section-title">
+        Allocazione
+        <button class="btn btn-secondary" style="padding:5px 11px;font-size:12px;" onclick="refreshQuotes()">
+          <i class="ti ti-refresh" aria-hidden="true"></i> Aggiorna
+        </button>
+      </div>
+      <div class="alloc-wrap">
+        <div class="alloc-chart-box">
+          <canvas id="donut-chart" role="img"
+            aria-label="Grafico allocazione portafoglio per tipo di asset">
+            ${allocation.map(s => `${s.label}: ${eur(s.value)}`).join(', ')}
+          </canvas>
+        </div>
+        <div class="alloc-legend" style="flex:1;">${allocLegendHTML()}</div>
+      </div>
+    </div>`;
+
+  const recent = `
+    <div class="card">
+      <div class="section-title">
+        Movimenti recenti
+        <span class="section-link" onclick="navigate('transactions')">Tutti →</span>
+      </div>
+      ${APP_DATA.transactions.slice(0, 4).map(txnRowHTML).join('')}
+    </div>`;
+
+  if (isDesktop) {
+    const topAssets = `
+      <div class="card">
+        <div class="section-title">Titoli principali</div>
+        ${[...enriched]
+          .sort((a, b) => b.totalValue - a.totalValue)
+          .slice(0, 5)
+          .map(i => `
+            <div class="acc-row">
+              ${logoBox(i)}
+              <div class="acc-info">
+                <div class="acc-name">${i.name}</div>
+                <div class="acc-sub">${i.ticker}</div>
+              </div>
+              <div class="acc-right">
+                <div class="acc-balance">${eur(i.totalValue)}</div>
+                <div class="acc-gl ${glClass(i.gl)}">${pct(i.glPct)}</div>
+              </div>
+            </div>`).join('')}
+      </div>`;
+
+    return `
+      <div class="section-body">
+        <div class="dash-grid">
+          <div class="dash-col">${hero}${alloc}${recent}</div>
+          <div class="dash-col">${metrics}${topAssets}${glBlockHTML()}</div>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="section-body">
+      ${hero}${metrics}${alloc}${recent}
+    </div>`;
+}
+
+/* =====================================================
+   PORTAFOGLIO
+   ===================================================== */
+function renderPortfolio(filter) {
+  const LABELS = { Tutti:'Tutti', ETF:'ETF', Azione:'Azioni', Fondo:'Fondi', Obbligazione:'Obbligazioni' };
+  const filters = ['Tutti', 'ETF', 'Azione', 'Fondo', 'Obbligazione'];
+  const items   = filter === 'Tutti' ? enriched : enriched.filter(i => i.type === filter);
+
+  const fV   = items.reduce((s, i) => s + i.totalValue, 0);
+  const fC   = items.reduce((s, i) => s + i.totalCost,  0);
+  const fGL  = fV - fC;
+  const fGLP = fC > 0 ? (fGL / fC) * 100 : 0;
+
+  const filterBar = `
+    <div class="filter-bar">
+      ${filters.map(f => `
+        <button class="filter-btn${filter === f ? ' active' : ''}"
+                onclick="setFilter('${f}')">
+          ${LABELS[f]}
+        </button>`).join('')}
+    </div>`;
+
+  const summaryBar = `
+    <div class="summary-bar">
+      <div class="summary-item">
+        <div class="summary-label">Valore mkt</div>
+        <div class="summary-value">${eur(fV)}</div>
+      </div>
+      <div class="summary-sep"></div>
+      <div class="summary-item">
+        <div class="summary-label">Carico tot.</div>
+        <div class="summary-value">${eur(fC)}</div>
+      </div>
+      <div class="summary-sep"></div>
+      <div class="summary-item">
+        <div class="summary-label">G/P</div>
+        <div class="summary-value ${glClass(fGL)}">${pct(fGLP)}</div>
+      </div>
+    </div>`;
+
+  const portList = `
+    <div class="port-list">
+      ${items.map(i => {
+        const col = TYPE_COLORS[i.type];
+        return `
+          <div class="port-item" style="border-left-color:${col};">
+            <div class="port-header">
+              ${logoBox(i)}
+              <div class="port-name-wrap">
+                <div class="port-top">
+                  <span class="type-badge"
+                        style="background:${col}18;color:${col};">${i.type}</span>
+                  <span class="port-name">${i.name}</span>
+                </div>
+                <div class="port-ticker">${i.ticker}</div>
+              </div>
+            </div>
+            <div class="port-stats">
+              <div>
+                <div class="stat-lbl">Qtà</div>
+                <div class="stat-val">${i.qty.toLocaleString('it-IT')}</div>
+              </div>
+              <div>
+                <div class="stat-lbl">Prezzo</div>
+                <div class="stat-val">${eur(i.price, 2)}</div>
+              </div>
+              <div>
+                <div class="stat-lbl">Valore</div>
+                <div class="stat-val">${eur(i.totalValue)}</div>
+              </div>
+              <div>
+                <div class="stat-lbl">G/P</div>
+                <div class="stat-val ${glClass(i.gl)}">${pct(i.glPct)}</div>
+              </div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+
+  return filterBar + summaryBar + portList;
+}
+
+/* =====================================================
+   CONTI
+   ===================================================== */
+function renderAccounts() {
+  const personal = APP_DATA.accounts.filter(a => a.type === 'personal');
+  const shared   = APP_DATA.accounts.filter(a => a.type === 'shared');
+
+  function accRows(list) {
+    return list.map(a => `
+      <div class="acc-row">
+        <div class="bank-badge" style="background:${BANK_COLORS[a.bank]};">${BANK_NAMES[a.bank]}</div>
+        <div class="acc-info">
+          <div class="acc-name">${a.name}</div>
+          <div class="acc-sub">${a.type === 'shared' ? 'Condiviso con moglie' : 'Conto personale'}</div>
+        </div>
+        <div class="acc-right">
+          <div class="acc-balance">${eur(a.balance)}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  return `
+    <div class="section-body">
+
+      <div class="card">
+        <div class="section-title">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <i class="ti ti-chart-pie" aria-hidden="true"></i> Portafoglio Investimenti
+          </span>
+        </div>
+        <div class="acc-row">
+          <div class="bank-badge" style="background:${BANK_COLORS.fineco};">${BANK_NAMES.fineco}</div>
+          <div class="acc-info">
+            <div class="acc-name">Fineco Investimenti</div>
+            <div class="acc-sub">${enriched.length} titoli in portafoglio</div>
+          </div>
+          <div class="acc-right">
+            <div class="acc-balance">${eur(totals.pV)}</div>
+            <div class="acc-gl ${glClass(totals.pGL)}">${pct(totals.pGLP)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <i class="ti ti-user" aria-hidden="true"></i> Conti Personali
+          </span>
+        </div>
+        ${accRows(personal)}
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <i class="ti ti-users" aria-hidden="true"></i> Conto Comune
+          </span>
+        </div>
+        ${accRows(shared)}
+      </div>
+
+      <div class="card split-row">
+        <div>
+          <div class="metric-label"><i class="ti ti-wallet" aria-hidden="true"></i> Liquidità</div>
+          <div class="metric-value">${eur(ccTotal)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="metric-label">Patrimonio totale</div>
+          <div class="metric-value text-blue">${eur(patrimony)}</div>
+        </div>
+      </div>
+
+    </div>`;
+}
+
+/* =====================================================
+   MOVIMENTI
+   ===================================================== */
+function renderTransactions() {
+  const grouped = {};
+  APP_DATA.transactions.forEach(t => {
+    if (!grouped[t.date]) grouped[t.date] = [];
+    grouped[t.date].push(t);
+  });
+
+  const groups = Object.entries(grouped)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, txns]) => `
+      <div class="date-hdr">${formatDateLong(date)}</div>
+      ${txns.map(txnRowHTML).join('')}`)
+    .join('');
+
+  return `
+    <div class="section-body">
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="addTransaction()">
+          <i class="ti ti-plus" aria-hidden="true"></i> Nuovo movimento
+        </button>
+        <button class="btn btn-secondary" onclick="importCSV()">
+          <i class="ti ti-upload" aria-hidden="true"></i> Importa CSV
+        </button>
+      </div>
+      <div class="card">${groups}</div>
+    </div>`;
+}
+
+/* =====================================================
+   IMPOSTAZIONI
+   ===================================================== */
+function renderSettings() {
+  const rows = [
+    { icon:'ti-building-bank', bg:'#378ADD18', col:'#378ADD', label:'Conti e banche',       sub:'4 conti configurati'         },
+    { icon:'ti-chart-line',    bg:'#1D9E7518', col:'#1D9E75', label:'Quotazioni e ticker',   sub:'Yahoo Finance + URL custom'   },
+    { icon:'ti-cloud',         bg:'#BA751718', col:'#BA7517', label:'Google Drive sync',     sub:'Da configurare — Fase 3'      },
+    { icon:'ti-lock',          bg:'#7F77DD18', col:'#7F77DD', label:'PIN e biometria',       sub:'Da configurare — Fase 3'      },
+    { icon:'ti-file-text',     bg:'#D85A3018', col:'#D85A30', label:'Importa CSV banche',    sub:'Fineco, ISP, ING supportati'  },
+    { icon:'ti-download',      bg:'#88878018', col:'#888780', label:'Esporta backup',         sub:'JSON cifrato AES-256'         },
+  ];
+
+  const rowsHTML = rows.map(r => `
+    <div class="settings-row">
+      <div class="settings-left">
+        <div class="settings-icon" style="background:${r.bg};color:${r.col};">
+          <i class="ti ${r.icon}" aria-hidden="true"></i>
+        </div>
+        <div>
+          <div class="settings-name">${r.label}</div>
+          <div class="settings-sub">${r.sub}</div>
+        </div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--text-tertiary);" aria-hidden="true"></i>
+    </div>`).join('');
+
+  return `
+    <div class="section-body">
+      <div class="card">${rowsHTML}</div>
+      <div class="info-box">
+        <i class="ti ti-shield-check" style="color:var(--c-green);" aria-hidden="true"></i>
+        Dati cifrati AES-256-GCM · Nessun dato inviato a server di terze parti
+      </div>
+    </div>`;
+}
