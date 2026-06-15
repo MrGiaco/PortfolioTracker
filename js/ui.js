@@ -99,7 +99,7 @@ function renderDashboard(isDesktop) {
         </span>
         <span class="hero-badge">
           <i class="ti ti-calendar" aria-hidden="true"></i>
-          14 giu 2026
+          ${new Date().toLocaleDateString('it-IT', { day:'numeric', month:'short', year:'numeric' })}
         </span>
       </div>
     </div>`;
@@ -118,7 +118,7 @@ function renderDashboard(isDesktop) {
           <i class="ti ti-wallet" aria-hidden="true"></i> Liquidità
         </div>
         <div class="metric-value">${eur(ccTotal)}</div>
-        <div class="metric-sub text-secondary">3 conti correnti</div>
+        <div class="metric-sub text-secondary">${(APP_DATA.accounts||[]).length} conti</div>
       </div>
     </div>`;
 
@@ -175,14 +175,24 @@ function renderDashboard(isDesktop) {
       <div class="section-body">
         <div class="dash-grid">
           <div class="dash-col">${hero}${alloc}${recent}</div>
-          <div class="dash-col">${metrics}${topAssets}${glBlockHTML()}</div>
+          <div class="dash-col">${metrics}${topAssets}${glBlockHTML()}${perfLine}</div>
         </div>
       </div>`;
   }
 
+  const perfLine = `
+    <div class="card">
+      <div class="section-title" style="margin-bottom:10px;">
+        Liquidità — ultimi 6 mesi
+      </div>
+      <div style="height:140px;position:relative;">
+        <canvas id="perf-line"></canvas>
+      </div>
+    </div>`;
+
   return `
     <div class="section-body">
-      ${hero}${metrics}${alloc}${recent}
+      ${hero}${metrics}${perfLine}${alloc}${recent}
     </div>`;
 }
 
@@ -194,19 +204,30 @@ function renderPortfolio(filter) {
   const filters = ['Tutti', 'ETF', 'Azione', 'Fondo', 'Obbligazione'];
   const items   = filter === 'Tutti' ? enriched : enriched.filter(i => i.type === filter);
 
-  const fV   = items.reduce((s, i) => s + i.totalValue, 0);
-  const fC   = items.reduce((s, i) => s + i.totalCost,  0);
-  const fGL  = fV - fC;
-  const fGLP = fC > 0 ? (fGL / fC) * 100 : 0;
-
   const filterBar = `
     <div class="filter-bar">
       ${filters.map(f => `
         <button class="filter-btn${filter === f ? ' active' : ''}"
-                onclick="setFilter('${f}')">
-          ${LABELS[f]}
-        </button>`).join('')}
+                onclick="setFilter('${f}')">${LABELS[f]}</button>`).join('')}
+      <button class="filter-btn port-add-btn" onclick="showAddPortfolioModal()" style="margin-left:auto;">
+        <i class="ti ti-plus" aria-hidden="true"></i> Aggiungi
+      </button>
     </div>`;
+
+  if (!enriched.length) {
+    return filterBar + `
+      <div class="pf-empty-state" style="margin-top:40px;">
+        <i class="ti ti-chart-pie-off"></i>
+        <p>Il portafoglio è vuoto.<br>
+          <span class="section-link" onclick="showAddPortfolioModal()">Aggiungi il tuo primo titolo →</span>
+        </p>
+      </div>`;
+  }
+
+  const fV   = items.reduce((s, i) => s + i.totalValue, 0);
+  const fC   = items.reduce((s, i) => s + i.totalCost,  0);
+  const fGL  = fV - fC;
+  const fGLP = fC > 0 ? (fGL / fC) * 100 : 0;
 
   const lastUpdNote = APP_DATA.lastQuoteUpdate
     ? `<div class="quote-note"><i class="ti ti-clock" aria-hidden="true"></i> Quotazioni: ${_timeAgo(APP_DATA.lastQuoteUpdate)} · <span class="section-link" onclick="refreshQuotes()">Aggiorna</span></div>`
@@ -232,13 +253,27 @@ function renderPortfolio(filter) {
       </div>
     </div>${lastUpdNote}`;
 
+  const chartHeight = Math.max(items.length * 42, 120);
+  const perfChart = `
+    <div class="port-perf-card">
+      <div class="section-title" style="margin-bottom:10px;">
+        Rendimento per titolo
+        <span class="section-link" onclick="showExportModal()">
+          <i class="ti ti-download" aria-hidden="true"></i> Esporta
+        </span>
+      </div>
+      <div style="height:${chartHeight}px;position:relative;">
+        <canvas id="perf-bar"></canvas>
+      </div>
+    </div>`;
+
   const portList = `
     <div class="port-list">
       ${items.map(i => {
-        const col      = TYPE_COLORS[i.type];
-        const hasPrc   = i.priceUpdated;
-        const dayPos   = (i.dayChangePct || 0) >= 0;
-        const dayRow   = hasPrc ? `
+        const col    = TYPE_COLORS[i.type];
+        const hasPrc = i.priceUpdated;
+        const dayPos = (i.dayChangePct || 0) >= 0;
+        const dayRow = hasPrc ? `
           <div class="port-day">
             <span class="${dayPos ? 'text-gain' : 'text-loss'}">
               <i class="ti ${dayPos ? 'ti-trending-up' : 'ti-trending-down'}" aria-hidden="true"></i>
@@ -253,37 +288,35 @@ function renderPortfolio(filter) {
               ${logoBox(i)}
               <div class="port-name-wrap">
                 <div class="port-top">
-                  <span class="type-badge"
-                        style="background:${col}18;color:${col};">${i.type}</span>
+                  <span class="type-badge" style="background:${col}18;color:${col};">${i.type}</span>
                   <span class="port-name">${i.name}</span>
                 </div>
                 <div class="port-ticker">${i.ticker}${i.priceSource === 'custom' ? ' <span style="font-size:10px;color:var(--c-amber);">★ custom</span>' : ''}</div>
               </div>
+              <div class="port-item-actions">
+                <button class="btn-icon" onclick="showUpdatePriceModal('${i.id}')" title="Aggiorna prezzo">
+                  <i class="ti ti-currency-euro" aria-hidden="true"></i>
+                </button>
+                <button class="btn-icon" onclick="showEditPortfolioModal('${i.id}')" title="Modifica">
+                  <i class="ti ti-pencil" aria-hidden="true"></i>
+                </button>
+                <button class="btn-icon danger" onclick="confirmDeletePortfolioItem('${i.id}')" title="Elimina">
+                  <i class="ti ti-trash" aria-hidden="true"></i>
+                </button>
+              </div>
             </div>
             <div class="port-stats">
-              <div>
-                <div class="stat-lbl">Qtà</div>
-                <div class="stat-val">${i.qty.toLocaleString('it-IT')}</div>
-              </div>
-              <div>
-                <div class="stat-lbl">Prezzo</div>
-                <div class="stat-val">${eur(i.price, 2)}</div>
-              </div>
-              <div>
-                <div class="stat-lbl">Valore</div>
-                <div class="stat-val">${eur(i.totalValue)}</div>
-              </div>
-              <div>
-                <div class="stat-lbl">G/P tot.</div>
-                <div class="stat-val ${glClass(i.gl)}">${pct(i.glPct)}</div>
-              </div>
+              <div><div class="stat-lbl">Qtà</div><div class="stat-val">${i.qty.toLocaleString('it-IT')}</div></div>
+              <div><div class="stat-lbl">Prezzo</div><div class="stat-val">${eur(i.price, 2)}</div></div>
+              <div><div class="stat-lbl">Valore</div><div class="stat-val">${eur(i.totalValue)}</div></div>
+              <div><div class="stat-lbl">G/P tot.</div><div class="stat-val ${glClass(i.gl)}">${pct(i.glPct)}</div></div>
             </div>
             ${dayRow}
           </div>`;
       }).join('')}
     </div>`;
 
-  return filterBar + summaryBar + portList;
+  return filterBar + summaryBar + perfChart + portList;
 }
 
 /* =====================================================
@@ -502,19 +535,7 @@ function renderSettings() {
         </div>`).join('')}
     </div>`;
 
-  const rowsHTML = rows.map(r => `
-    <div class="settings-row" ${r.action ? `onclick="${r.action}"` : ''}>
-      <div class="settings-left">
-        <div class="settings-icon" style="background:${r.bg};color:${r.col};">
-          <i class="ti ${r.icon}" aria-hidden="true"></i>
-        </div>
-        <div>
-          <div class="settings-name">${r.label}</div>
-          <div class="settings-sub">${r.sub}</div>
-        </div>
-      </div>
-      <i class="ti ti-chevron-right" style="color:var(--text-tertiary);" aria-hidden="true"></i>
-    </div>`).join('');
+  const rowsHTML = '';
 
   return `
     <div class="section-body">
@@ -583,7 +604,38 @@ function renderSettings() {
         ${tickerRows}
       </div>
 
-      <div class="card">${rowsHTML}</div>
+
+      <div class="card">
+        <div class="section-title">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <i class="ti ti-download" aria-hidden="true"></i> Esportazione dati
+          </span>
+        </div>
+        <div class="settings-row" onclick="exportPortfolioCSV()">
+          <div class="settings-left">
+            <div class="settings-icon" style="background:rgba(55,138,221,.12);color:var(--c-blue);">
+              <i class="ti ti-table-export" aria-hidden="true"></i>
+            </div>
+            <div>
+              <div class="settings-name">Esporta Portafoglio CSV</div>
+              <div class="settings-sub">Ticker, quantità, prezzi, G/P</div>
+            </div>
+          </div>
+          <i class="ti ti-chevron-right" style="color:var(--text-tertiary);" aria-hidden="true"></i>
+        </div>
+        <div class="settings-row" onclick="exportTransactionsCSV()">
+          <div class="settings-left">
+            <div class="settings-icon" style="background:rgba(29,158,117,.12);color:var(--c-teal);">
+              <i class="ti ti-receipt-2" aria-hidden="true"></i>
+            </div>
+            <div>
+              <div class="settings-name">Esporta Transazioni CSV</div>
+              <div class="settings-sub">Data, descrizione, importo, categoria</div>
+            </div>
+          </div>
+          <i class="ti ti-chevron-right" style="color:var(--text-tertiary);" aria-hidden="true"></i>
+        </div>
+      </div>
 
       <div class="info-box">
         <i class="ti ti-shield-check" style="color:var(--c-green);" aria-hidden="true"></i>
