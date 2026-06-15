@@ -21,7 +21,11 @@ function navigate(section) {
 function setFilter(filter) {
   state.filter = filter;
   const c = $('section-portfolio');
-  if (c) c.innerHTML = renderPortfolio(filter);
+  if (c) {
+    destroyAllCharts();
+    c.innerHTML = renderPortfolio(filter);
+    setTimeout(() => initBarChart('perf-bar'), 50);
+  }
 }
 
 /* =====================================================
@@ -34,14 +38,14 @@ function renderApp() {
   const title = SECTION_TITLES[sec];
 
   const ptEl = $('page-title');    if (ptEl) ptEl.textContent = title;
-  const psEl = $('page-subtitle'); if (psEl) psEl.textContent = 'dom 14 giugno 2026';
+  const psEl = $('page-subtitle'); if (psEl) psEl.textContent = new Date().toLocaleDateString('it-IT', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
   const dtEl = $('desktop-title'); if (dtEl) dtEl.textContent = title;
   const stEl = $('sidebar-total'); if (stEl) stEl.textContent = eur(patrimony);
 
   $$('[data-section]').forEach(el => el.classList.toggle('active', el.dataset.section === sec));
   $$('.section').forEach(s => s.classList.remove('active'));
 
-  destroyDonut();
+  destroyAllCharts();
   const container = $(`section-${sec}`);
   if (!container) return;
   container.classList.add('active');
@@ -49,9 +53,18 @@ function renderApp() {
   switch (sec) {
     case 'dashboard':
       container.innerHTML = renderDashboard(desk);
-      setTimeout(() => { initDonut('donut-chart'); animateCounter('hero-val', patrimony); }, 50);
+      setTimeout(() => {
+        initDonut('donut-chart');
+        animateCounter('hero-val', patrimony);
+        if (typeof getPatrimonyHistory === 'function') {
+          initLineChart('perf-line', getPatrimonyHistory(6));
+        }
+      }, 50);
       break;
-    case 'portfolio':    container.innerHTML = renderPortfolio(state.filter); break;
+    case 'portfolio':
+      container.innerHTML = renderPortfolio(state.filter);
+      setTimeout(() => initBarChart('perf-bar'), 50);
+      break;
     case 'accounts':     container.innerHTML = renderAccounts();              break;
     case 'transactions': container.innerHTML = renderTransactions();          break;
     case 'settings':     container.innerHTML = renderSettings();              break;
@@ -225,9 +238,10 @@ function initDesktopButtons() {
   const r  = $('desktop-refresh'); if (r)  r.addEventListener('click', refreshQuotes);
   const a  = $('desktop-add');
   if (a) a.addEventListener('click', () => {
-    if (state.section === 'transactions') addTransaction();
-    else if (state.section === 'portfolio') showToast('Aggiungi titolo — Fase 5.', 'info');
-    else showToast('Aggiungi — Fase 5.', 'info');
+    if      (state.section === 'transactions') addTransaction();
+    else if (state.section === 'portfolio')    showAddPortfolioModal();
+    else if (state.section === 'accounts')     showAddContoModal();
+    else showToast('Seleziona una sezione per aggiungere.', 'info');
   });
   const mr = $('btn-refresh'); if (mr) mr.addEventListener('click', refreshQuotes);
   const lk = $('btn-profile'); if (lk) lk.addEventListener('click', lockApp);
@@ -272,3 +286,10 @@ window.saveWorkerUrl   = saveWorkerUrl;
 window.clearWorkerUrl  = clearWorkerUrl;
 window.setAutoRefresh  = setAutoRefresh;
 window.saveCustomUrl   = saveCustomUrl;
+window.showExportModal            = showExportModal;
+window.exportPortfolioCSV         = exportPortfolioCSV;
+window.exportTransactionsCSV      = exportTransactionsCSV;
+window.showAddPortfolioModal      = showAddPortfolioModal;
+window.showEditPortfolioModal     = showEditPortfolioModal;
+window.showUpdatePriceModal       = showUpdatePriceModal;
+window.confirmDeletePortfolioItem = confirmDeletePortfolioItem;
