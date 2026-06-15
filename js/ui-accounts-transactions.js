@@ -1,7 +1,6 @@
 /* =====================================================
-   ui-accounts-transactions.js (Fase 5)
-   Sostituisce i placeholder in ui.js.
-   Caricare DOPO accounts.js, transactions.js e ui.js.
+   ui-accounts-transactions.js (Fase 5 — v2)
+   Modali completamente ridisegnati, bug fixes.
    ===================================================== */
 
 var PERIODO_LABEL = {
@@ -36,7 +35,12 @@ function openModal(html) {
     });
     document.body.appendChild(overlay);
   }
-  overlay.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()">' + html + '</div>';
+  /* pill di trascinamento aggiunto automaticamente */
+  overlay.innerHTML =
+    '<div class="modal-box" onclick="event.stopPropagation()">'
+    + '<div class="modal-pill"><span></span></div>'
+    + html
+    + '</div>';
   overlay.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 }
@@ -52,16 +56,20 @@ function closeModal() {
 
 function showToast(msg, tipo) {
   tipo = tipo || 'success';
+  /* normalizza 'error' → 'danger' (compat. con quotes.js) */
+  if (tipo === 'error') tipo = 'danger';
   var t = document.createElement('div');
   t.className = 'pf-toast pf-toast-' + tipo;
-  var ico = tipo === 'success' ? 'ti-check' : tipo === 'danger' ? 'ti-alert-circle' : 'ti-info-circle';
+  var ico = tipo === 'success' ? 'ti-check'
+          : tipo === 'danger'  ? 'ti-alert-circle'
+          : 'ti-info-circle';
   t.innerHTML = '<i class="ti ' + ico + '"></i> ' + msg;
   document.body.appendChild(t);
   setTimeout(function() { t.classList.add('pf-toast-show'); }, 10);
   setTimeout(function() {
     t.classList.remove('pf-toast-show');
     setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
-  }, 3000);
+  }, 3200);
 }
 
 /* ══════════════════════════════════════════════════════
@@ -69,21 +77,22 @@ function showToast(msg, tipo) {
    ══════════════════════════════════════════════════════ */
 
 function renderAccounts() {
-  var conti   = getConti();
-  var totale  = calcSaldoTotale();
+  var conti  = getConti();
+  var totale = calcSaldoTotale();
 
   var html = '<div class="section-header">'
     + '<div><h2>Conti</h2>'
-    + '<div class="section-subtotal">' + eur(totale) + ' totale</div></div>'
+    + '<div class="section-subtotal">' + eur(totale) + ' patrimonio liquido</div></div>'
     + '<button class="btn btn-primary" onclick="showAddContoModal()">'
     + '<i class="ti ti-plus" aria-hidden="true"></i> Aggiungi</button>'
     + '</div>';
 
   if (!conti.length) {
-    return html + '<div class="pf-empty-state">'
+    html += '<div class="pf-empty-state">'
       + '<i class="ti ti-wallet-off"></i>'
       + '<p>Nessun conto aggiunto.<br>Clicca <strong>Aggiungi</strong> per iniziare.</p>'
       + '</div>';
+    return '<div class="section-body-f5">' + html + '</div>';
   }
 
   var tipi = ['investimento', 'personale', 'comune'];
@@ -99,14 +108,11 @@ function renderAccounts() {
       + '<span class="acc-group-tot">' + eur(totGruppo) + '</span>'
       + '</div>';
 
-    gruppo.forEach(function(acc) {
-      html += _renderContoCard(acc);
-    });
-
+    gruppo.forEach(function(acc) { html += _renderContoCard(acc); });
     html += '</div>';
   });
 
-  return html;
+  return '<div class="section-body-f5">' + html + '</div>';
 }
 
 function _renderContoCard(acc) {
@@ -118,7 +124,7 @@ function _renderContoCard(acc) {
   var tColor = trend >= 0 ? '#1D9E75' : '#D85A30';
   var tStr   = (trend >= 0 ? '+' : '') + eur(trend);
 
-  var txns   = (APP_DATA.transactions || []).filter(function(t) { return t.contoId === acc.id; });
+  var txns  = (APP_DATA.transactions || []).filter(function(t) { return t.contoId === acc.id; });
   var ultima = txns.sort(function(a, b) { return b.data.localeCompare(a.data); })[0];
   var ulData = ultima ? _fmtData(ultima.data) : '—';
 
@@ -127,11 +133,10 @@ function _renderContoCard(acc) {
     + '<span class="bank-badge" style="background:' + banca.colore + ';color:' + banca.tc + '">'
     + banca.label + '</span>'
     + '<div class="acc-info">'
-    + '<div class="acc-name">' + acc.nome + '</div>'
+    + '<div class="acc-name">' + _esc(acc.nome) + '</div>'
     + '<div class="acc-sub">Ult. mov.: ' + ulData + '</div>'
     + '</div></div>'
-    + '<div class="acc-card-m">'
-    + svg
+    + '<div class="acc-card-m">' + svg
     + '<div class="acc-trend" style="color:' + tColor + '">' + tStr + '</div>'
     + '</div>'
     + '<div class="acc-card-r">'
@@ -157,7 +162,7 @@ function showAddContoModal() {
 
   openModal(
     '<div class="modal-hdr"><h3>Nuovo Conto</h3>'
-    + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    + '<button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
     + '<div class="modal-body">'
     + '<label>Nome conto</label>'
     + '<input id="m-nome" type="text" placeholder="es. Fineco — Corrente">'
@@ -167,7 +172,7 @@ function showAddContoModal() {
     + '</div>'
     + '<div class="form-row2">'
     + '<div><label>Saldo di partenza (€)</label><input id="m-saldo" type="number" step="0.01" placeholder="0.00"></div>'
-    + '<div><label>Data di partenza</label><input id="m-datap" type="date" value="' + oggi + '"></div>'
+    + '<div><label>Data apertura</label><input id="m-datap" type="date" value="' + oggi + '"></div>'
     + '</div>'
     + '<label>Note (opzionale)</label>'
     + '<input id="m-note" type="text" placeholder="">'
@@ -196,7 +201,7 @@ function showEditContoModal(id) {
 
   openModal(
     '<div class="modal-hdr"><h3>Modifica Conto</h3>'
-    + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    + '<button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
     + '<div class="modal-body">'
     + '<label>Nome conto</label>'
     + '<input id="m-nome" type="text" value="' + _esc(acc.nome) + '">'
@@ -206,7 +211,7 @@ function showEditContoModal(id) {
     + '</div>'
     + '<div class="form-row2">'
     + '<div><label>Saldo di partenza (€)</label><input id="m-saldo" type="number" step="0.01" value="' + (acc.saldoPartenza || 0) + '"></div>'
-    + '<div><label>Data di partenza</label><input id="m-datap" type="date" value="' + (acc.dataPartenza || '') + '"></div>'
+    + '<div><label>Data apertura</label><input id="m-datap" type="date" value="' + (acc.dataPartenza || '') + '"></div>'
     + '</div>'
     + '<label>Note</label>'
     + '<input id="m-note" type="text" value="' + _esc(acc.note || '') + '">'
@@ -227,7 +232,6 @@ function saveContoFromModal(id) {
   var note  = _val('m-note')   || '';
 
   if (!nome) { alert('Inserisci il nome del conto.'); return; }
-  if (!datap) { alert('Inserisci la data di partenza.'); return; }
 
   var fields = { nome: nome, banca: banca, tipo: tipo, saldoPartenza: saldo, dataPartenza: datap, note: note };
   if (id) { updateConto(id, fields); } else { addConto(fields); }
@@ -241,19 +245,21 @@ function confirmDeleteConto(id) {
   var acc = getConto(id);
   if (!acc) return;
   var txCount = (APP_DATA.transactions || []).filter(function(t) { return t.contoId === id; }).length;
-  var warn = txCount
-    ? '<p class="pf-warning"><i class="ti ti-alert-triangle"></i> Verranno eliminate anche le <strong>'
-      + txCount + ' transazioni</strong> associate.</p>'
+
+  var warnHtml = txCount
+    ? '<div class="pf-warning" style="margin:0 22px 4px;">'
+      + '<i class="ti ti-alert-triangle"></i>'
+      + ' Verranno eliminate anche le <strong>' + txCount + ' transazioni</strong> associate.</div>'
     : '';
+
   openModal(
-    '<div class="modal-hdr"><h3>Elimina conto</h3>'
-    + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
-    + '<div class="modal-body">'
-    + '<p>Vuoi eliminare il conto <strong>' + _esc(acc.nome) + '</strong>?</p>' + warn
-    + '</div>'
-    + '<div class="modal-ftr">'
+    '<div class="modal-confirm-ico danger"><i class="ti ti-trash"></i></div>'
+    + '<div class="modal-confirm-title">Elimina conto</div>'
+    + '<div class="modal-confirm-sub">Vuoi eliminare il conto<br><strong>' + _esc(acc.nome) + '</strong>?</div>'
+    + warnHtml
+    + '<div class="modal-ftr" style="margin-top:16px;">'
     + '<button class="btn btn-secondary" onclick="closeModal()">Annulla</button>'
-    + '<button class="btn btn-danger" onclick="_doDeleteConto(\'' + id + '\')">Elimina</button>'
+    + '<button class="btn-danger" onclick="_doDeleteConto(\'' + id + '\')">Elimina</button>'
     + '</div>'
   );
 }
@@ -273,7 +279,7 @@ function renderTransactions() {
   if (!state.txFilter) state.txFilter = { periodo: '90d', contoId: '', categoria: '' };
   var f = state.txFilter;
 
-  var txns = getTransazioni(f);
+  var txns  = getTransazioni(f);
   var conti = getConti();
 
   /* ── Filtri ── */
@@ -297,10 +303,12 @@ function renderTransactions() {
   var html = '<div class="section-header">'
     + '<h2>Transazioni</h2>'
     + '<div class="tx-btns-hdr">'
+    + '<button class="btn btn-secondary" onclick="showExportModal()">'
+    + '<i class="ti ti-download" aria-hidden="true"></i><span> Esporta</span></button>'
     + '<button class="btn btn-secondary" onclick="importCSV()">'
-    + '<i class="ti ti-upload" aria-hidden="true"></i> CSV</button>'
+    + '<i class="ti ti-upload" aria-hidden="true"></i><span> CSV</span></button>'
     + '<button class="btn btn-primary" onclick="addTransaction()">'
-    + '<i class="ti ti-plus" aria-hidden="true"></i> Aggiungi</button>'
+    + '<i class="ti ti-plus" aria-hidden="true"></i><span> Aggiungi</span></button>'
     + '</div></div>'
     + '<div class="tx-filters">'
     + '<div class="filter-pills">' + pillsHtml + '</div>'
@@ -309,10 +317,11 @@ function renderTransactions() {
     + '</div>';
 
   if (!txns.length) {
-    return html + '<div class="pf-empty-state">'
+    html += '<div class="pf-empty-state">'
       + '<i class="ti ti-list-search"></i>'
       + '<p>Nessuna transazione nel periodo selezionato.</p>'
       + '</div>';
+    return '<div class="section-body-f5">' + html + '</div>';
   }
 
   /* ── Raggruppa per mese ── */
@@ -324,10 +333,10 @@ function renderTransactions() {
   });
 
   Object.keys(groups).sort().reverse().forEach(function(mese) {
-    var rows  = groups[mese];
-    var sub   = rows.reduce(function(s, t) { return s + t.importo; }, 0);
-    var subC  = sub >= 0 ? '#1D9E75' : '#D85A30';
-    var subS  = (sub >= 0 ? '+' : '') + eur(sub);
+    var rows = groups[mese];
+    var sub  = rows.reduce(function(s, t) { return s + t.importo; }, 0);
+    var subC = sub >= 0 ? '#1D9E75' : '#D85A30';
+    var subS = (sub >= 0 ? '+' : '') + eur(sub);
 
     html += '<div class="tx-group-hdr">'
       + '<span>' + _fmtMese(mese) + '</span>'
@@ -337,7 +346,7 @@ function renderTransactions() {
     rows.forEach(function(t) { html += _renderTxRow(t); });
   });
 
-  return html;
+  return '<div class="section-body-f5">' + html + '</div>';
 }
 
 function _renderTxRow(t) {
@@ -375,21 +384,19 @@ function setTxFilter(key, value) {
 
 /* ── Modal: Aggiungi/Modifica transazione ─────────── */
 
-function addTransaction() {
-  showAddTxModal();
-}
+function addTransaction() { showAddTxModal(); }
 
 function showAddTxModal() {
   var conti = getConti();
   if (!conti.length) {
     openModal(
-      '<div class="modal-hdr"><h3>Nuova Transazione</h3>'
-      + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
-      + '<div class="modal-body"><div class="pf-empty-state" style="padding:30px 0">'
-      + '<i class="ti ti-alert-circle"></i>'
-      + '<p>Aggiungi prima un conto dalla sezione <strong>Conti</strong>.</p>'
-      + '</div></div>'
-      + '<div class="modal-ftr"><button class="btn btn-secondary" onclick="closeModal()">Chiudi</button></div>'
+      '<div class="modal-confirm-ico info"><i class="ti ti-wallet-off"></i></div>'
+      + '<div class="modal-confirm-title">Nessun conto</div>'
+      + '<div class="modal-confirm-sub">Aggiungi prima un conto dalla sezione <strong>Conti</strong> per poter registrare transazioni.</div>'
+      + '<div class="modal-ftr" style="margin-top:16px;">'
+      + '<button class="btn btn-secondary" onclick="closeModal()">Chiudi</button>'
+      + '<button class="btn btn-primary" onclick="closeModal();navigate(\'accounts\')">Vai ai Conti</button>'
+      + '</div>'
     );
     return;
   }
@@ -404,7 +411,7 @@ function showAddTxModal() {
 
   openModal(
     '<div class="modal-hdr"><h3>Nuova Transazione</h3>'
-    + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    + '<button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
     + '<div class="modal-body">'
     + '<div class="tipo-toggle">'
     + '<button id="t-entrata" class="tipo-btn active" onclick="setTxTipo(\'entrata\')">'
@@ -451,7 +458,7 @@ function showEditTxModal(id) {
 
   openModal(
     '<div class="modal-hdr"><h3>Modifica Transazione</h3>'
-    + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    + '<button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
     + '<div class="modal-body">'
     + '<div class="tipo-toggle">'
     + '<button id="t-entrata" class="tipo-btn' + (tipo === 'entrata' ? ' active' : '') + '" onclick="setTxTipo(\'entrata\')">'
@@ -496,10 +503,10 @@ function saveTxFromModal(id) {
   var contoId = _val('m-conto')   || '';
   var note    = _val('m-note')    || '';
 
-  if (!raw)     { alert('Inserisci un importo.');     return; }
-  if (!data)    { alert('Inserisci una data.');        return; }
-  if (!desc)    { alert('Inserisci una descrizione.'); return; }
-  if (!contoId) { alert('Seleziona un conto.');        return; }
+  if (!raw)     { alert('Inserisci un importo.');      return; }
+  if (!data)    { alert('Inserisci una data.');         return; }
+  if (!desc)    { alert('Inserisci una descrizione.');  return; }
+  if (!contoId) { alert('Seleziona un conto.');         return; }
 
   var importo = window._txTipo === 'uscita' ? -Math.abs(raw) : Math.abs(raw);
   var fields  = { data: data, descrizione: desc, importo: importo, categoria: cat, contoId: contoId, note: note };
@@ -514,19 +521,20 @@ function saveTxFromModal(id) {
 function confirmDeleteTx(id) {
   var t = (APP_DATA.transactions || []).find(function(x) { return x.id === id; });
   if (!t) return;
+
   openModal(
-    '<div class="modal-hdr"><h3>Elimina transazione</h3>'
-    + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
-    + '<div class="modal-body">'
-    + '<p>Vuoi eliminare questa transazione?</p>'
-    + '<div class="tx-del-box">'
+    '<div class="modal-confirm-ico danger"><i class="ti ti-trash"></i></div>'
+    + '<div class="modal-confirm-title">Elimina transazione</div>'
+    + '<div class="modal-confirm-sub">Questa operazione è irreversibile.</div>'
+    + '<div class="modal-confirm-detail">'
     + '<strong>' + _esc(t.descrizione) + '</strong><br>'
-    + '<small>' + _fmtData(t.data) + ' &nbsp;·&nbsp; '
-    + (t.importo >= 0 ? '+' : '') + eur(t.importo) + '</small>'
-    + '</div></div>'
+    + '<span style="color:var(--text-secondary);font-size:13px;">'
+    + _fmtData(t.data) + ' &nbsp;·&nbsp; '
+    + (t.importo >= 0 ? '+' : '') + eur(t.importo)
+    + '</span></div>'
     + '<div class="modal-ftr">'
     + '<button class="btn btn-secondary" onclick="closeModal()">Annulla</button>'
-    + '<button class="btn btn-danger" onclick="_doDeleteTx(\'' + id + '\')">Elimina</button>'
+    + '<button class="btn-danger" onclick="_doDeleteTx(\'' + id + '\')">Elimina</button>'
     + '</div>'
   );
 }
@@ -544,13 +552,13 @@ function importCSV() {
   var conti = getConti();
   if (!conti.length) {
     openModal(
-      '<div class="modal-hdr"><h3>Importa CSV</h3>'
-      + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
-      + '<div class="modal-body"><div class="pf-empty-state" style="padding:30px 0">'
-      + '<i class="ti ti-alert-circle"></i>'
-      + '<p>Aggiungi prima un conto dalla sezione <strong>Conti</strong>.</p>'
-      + '</div></div>'
-      + '<div class="modal-ftr"><button class="btn btn-secondary" onclick="closeModal()">Chiudi</button></div>'
+      '<div class="modal-confirm-ico info"><i class="ti ti-upload"></i></div>'
+      + '<div class="modal-confirm-title">Nessun conto</div>'
+      + '<div class="modal-confirm-sub">Aggiungi prima un conto dalla sezione <strong>Conti</strong>.</div>'
+      + '<div class="modal-ftr" style="margin-top:16px;">'
+      + '<button class="btn btn-secondary" onclick="closeModal()">Chiudi</button>'
+      + '<button class="btn btn-primary" onclick="closeModal();navigate(\'accounts\')">Vai ai Conti</button>'
+      + '</div>'
     );
     return;
   }
@@ -561,15 +569,15 @@ function importCSV() {
 
   openModal(
     '<div class="modal-hdr"><h3>Importa CSV</h3>'
-    + '<button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    + '<button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
     + '<div class="modal-body">'
     + '<label>Conto destinazione</label>'
     + '<select id="csv-conto">' + contiOpt + '</select>'
     + '<label>File CSV</label>'
     + '<div class="file-drop" onclick="document.getElementById(\'csv-file\').click()">'
-    + '<i class="ti ti-cloud-upload" style="font-size:32px;color:var(--text-secondary)"></i>'
-    + '<p>Clicca per selezionare un file<br>'
-    + '<small>Formati: Fineco · Intesa SP · ING · generico</small></p>'
+    + '<i class="ti ti-cloud-upload drop-icon" aria-hidden="true"></i>'
+    + '<p>Clicca per selezionare un file</p>'
+    + '<small>Formati supportati: Fineco · Intesa SP · ING · generico</small>'
     + '<input type="file" id="csv-file" accept=".csv,.txt" style="display:none" onchange="handleCSVFile(this)">'
     + '</div>'
     + '<div id="csv-preview"></div>'
@@ -598,12 +606,12 @@ function handleCSVFile(input) {
       var skipped = result.rows.length - valid.length;
       window._csvPending = valid;
 
-      var fmtLabel = { fineco: 'Fineco', isp: 'Intesa San Paolo', ing: 'ING', generic: 'Generico' };
+      var fmtLabel = { fineco:'Fineco', isp:'Intesa San Paolo', ing:'ING', generic:'Generico' };
 
       var previewHtml = valid.slice(0, 8).map(function(r) {
-        var cat  = CATEGORIE[r.categoria] || CATEGORIE.altro;
-        var col  = r.importo >= 0 ? '#1D9E75' : '#D85A30';
-        var sgn  = r.importo >= 0 ? '+' : '';
+        var cat = CATEGORIE[r.categoria] || CATEGORIE.altro;
+        var col = r.importo >= 0 ? '#1D9E75' : '#D85A30';
+        var sgn = r.importo >= 0 ? '+' : '';
         return '<div class="csv-row">'
           + '<span class="csv-d">' + r.data + '</span>'
           + '<span class="csv-desc">' + _esc(r.descrizione.slice(0, 45)) + '</span>'
@@ -613,7 +621,7 @@ function handleCSVFile(input) {
       }).join('');
 
       var skipNote = skipped
-        ? ' <span style="color:var(--text-secondary)">(' + skipped + ' prima del ' + (acc ? acc.dataPartenza : '') + ' ignorate)</span>'
+        ? ' <span style="color:var(--text-secondary)">(' + skipped + ' ignorate)</span>'
         : '';
 
       document.getElementById('csv-preview').innerHTML =
@@ -655,5 +663,5 @@ function _val(id) {
 }
 
 function _esc(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
