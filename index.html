@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#378ADD">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Portafoglio</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- =====================================================
+     AUTH OVERLAY — visibile finché l'app è bloccata
+     ===================================================== -->
+<div id="auth-overlay">
+  <div class="auth-card">
+
+    <div class="auth-logo">
+      <div class="auth-logo-icon">
+        <i class="ti ti-chart-pie" aria-hidden="true"></i>
+      </div>
+      <span class="auth-logo-name">Portafoglio</span>
+    </div>
+
+    <h2 id="auth-title" class="auth-title">Portafoglio</h2>
+    <p  id="auth-sub"   class="auth-sub">Inserisci il PIN a 6 cifre</p>
+
+    <!-- Pallini PIN -->
+    <div class="pin-dots" id="pin-dots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+
+    <p class="auth-error" id="auth-error"></p>
+
+    <!-- Tastierino numerico -->
+    <div class="keypad" id="keypad">
+      <button class="key-btn" data-key="1">1</button>
+      <button class="key-btn" data-key="2">2</button>
+      <button class="key-btn" data-key="3">3</button>
+      <button class="key-btn" data-key="4">4</button>
+      <button class="key-btn" data-key="5">5</button>
+      <button class="key-btn" data-key="6">6</button>
+      <button class="key-btn" data-key="7">7</button>
+      <button class="key-btn" data-key="8">8</button>
+      <button class="key-btn" data-key="9">9</button>
+      <button class="key-btn key-empty" id="key-bio" aria-label="Impronta digitale">
+        <i class="ti ti-fingerprint" aria-hidden="true"></i>
+      </button>
+      <button class="key-btn" data-key="0">0</button>
+      <button class="key-btn key-delete" id="key-del" aria-label="Cancella">⌫</button>
+    </div>
+
+    <!-- Link ripristino da Drive (solo su nuovo dispositivo) -->
+    <div class="auth-footer">
+      <button id="btn-drive-restore" class="auth-link hidden">
+        <i class="ti ti-cloud-download" aria-hidden="true"></i> Ripristina da Drive
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- =====================================================
+     APP PRINCIPALE
+     ===================================================== -->
+<div id="app">
+
+  <!-- Topbar: solo mobile -->
+  <header id="topbar">
+    <div class="topbar-info">
+      <h1 id="page-title">Dashboard</h1>
+      <p id="page-subtitle"></p>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="btn-refresh" aria-label="Aggiorna quotazioni">
+        <i class="ti ti-refresh" aria-hidden="true"></i>
+      </button>
+      <button class="icon-btn icon-btn--primary" id="btn-profile" aria-label="Profilo">
+        <i class="ti ti-user" aria-hidden="true"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Sidebar: solo desktop -->
+  <aside id="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">
+        <i class="ti ti-chart-pie" aria-hidden="true"></i>
+      </div>
+      <span class="sidebar-brand-name">Portafoglio</span>
+    </div>
+    <nav class="sidebar-nav" role="navigation" aria-label="Menu principale">
+      <a class="sidebar-nav-item" data-section="dashboard" href="#dashboard">
+        <i class="ti ti-home" aria-hidden="true"></i><span>Dashboard</span>
+      </a>
+      <a class="sidebar-nav-item" data-section="portfolio" href="#portfolio">
+        <i class="ti ti-chart-pie" aria-hidden="true"></i><span>Portafoglio</span>
+      </a>
+      <a class="sidebar-nav-item" data-section="accounts" href="#accounts">
+        <i class="ti ti-wallet" aria-hidden="true"></i><span>Conti</span>
+      </a>
+      <a class="sidebar-nav-item" data-section="transactions" href="#transactions">
+        <i class="ti ti-credit-card" aria-hidden="true"></i><span>Movimenti</span>
+      </a>
+      <a class="sidebar-nav-item" data-section="settings" href="#settings">
+        <i class="ti ti-settings" aria-hidden="true"></i><span>Impostazioni</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <p class="sidebar-footer-label">Patrimonio totale</p>
+      <p id="sidebar-total" class="sidebar-footer-value">€0</p>
+      <span id="sync-status" class="sync-status" title=""></span>
+    </div>
+  </aside>
+
+  <!-- Contenuto principale -->
+  <main id="main" role="main">
+    <div id="desktop-header">
+      <h2 id="desktop-title">Dashboard</h2>
+      <div class="desktop-header-actions">
+        <button class="btn btn-secondary" id="desktop-refresh">
+          <i class="ti ti-refresh" aria-hidden="true"></i> Aggiorna
+        </button>
+        <button class="btn btn-primary" id="desktop-add">
+          <i class="ti ti-plus" aria-hidden="true"></i> Aggiungi
+        </button>
+      </div>
+    </div>
+
+    <section id="section-dashboard"    class="section active" aria-label="Dashboard"></section>
+    <section id="section-portfolio"    class="section"        aria-label="Portafoglio"></section>
+    <section id="section-accounts"     class="section"        aria-label="Conti"></section>
+    <section id="section-transactions" class="section"        aria-label="Movimenti"></section>
+    <section id="section-settings"     class="section"        aria-label="Impostazioni"></section>
+  </main>
+
+  <!-- Bottom nav: solo mobile -->
+  <nav id="bottom-nav" role="navigation" aria-label="Navigazione principale">
+    <a class="bottom-item" data-section="dashboard"    href="#dashboard">
+      <i class="ti ti-home"        aria-hidden="true"></i><span>Home</span>
+    </a>
+    <a class="bottom-item" data-section="portfolio"    href="#portfolio">
+      <i class="ti ti-chart-pie"   aria-hidden="true"></i><span>Portafoglio</span>
+    </a>
+    <a class="bottom-item" data-section="accounts"     href="#accounts">
+      <i class="ti ti-wallet"      aria-hidden="true"></i><span>Conti</span>
+    </a>
+    <a class="bottom-item" data-section="transactions" href="#transactions">
+      <i class="ti ti-credit-card" aria-hidden="true"></i><span>Movimenti</span>
+    </a>
+    <a class="bottom-item" data-section="settings"     href="#settings">
+      <i class="ti ti-settings"    aria-hidden="true"></i><span>Impostazioni</span>
+    </a>
+  </nav>
+
+</div><!-- #app -->
+
+<!-- =====================================================
+     Google Identity Services (GIS) — carica con onload
+     per garantire che drive.init() avvenga DOPO il caricamento
+     ===================================================== -->
+<script>
+  // Flag globale: imposta true quando la libreria GIS è pronta
+  window._gisReady = false;
+  window._gisCallbacks = [];
+  function _onGisReady(cb) {
+    if (window._gisReady) { cb(); return; }
+    window._gisCallbacks.push(cb);
+  }
+  function _gisLoaded() {
+    window._gisReady = true;
+    window._gisCallbacks.forEach(function(cb) {
+      try { cb(); } catch (e) { console.error('[gis] callback error:', e); }
+    });
+    window._gisCallbacks = [];
+  }
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer onload="_gisLoaded()"></script>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+<!-- App modules (ordine di caricamento importante) -->
+<script src="js/crypto.js"></script>
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/drive.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/quotes.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/accounts.js"></script>
+<script src="js/transactions.js"></script>
+<script src="js/portfolio.js"></script>
+<script src="js/ui-accounts-transactions.js"></script>
+<script src="js/ui-portfolio.js"></script>
+<script src="js/app.js"></script>
+
+<!-- =====================================================
+     Service Worker registration (PWA)
+     ===================================================== -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('sw.js')
+        .then(function(reg) { console.log('[sw] registrato:', reg.scope); })
+        .catch(function(err) { console.warn('[sw] registrazione fallita:', err); });
+    });
+  }
+</script>
+
+</body>
+</html>
