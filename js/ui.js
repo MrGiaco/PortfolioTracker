@@ -150,6 +150,17 @@ function renderDashboard(isDesktop) {
       ${APP_DATA.transactions.slice(0, 4).map(txnRowHTML).join('')}
     </div>`;
 
+  /* Grafico liquidità — dichiarato qui per essere disponibile su entrambi i layout */
+  const perfLine = `
+    <div class="card">
+      <div class="section-title" style="margin-bottom:10px;">
+        Liquidità — ultimi 6 mesi
+      </div>
+      <div style="height:140px;position:relative;">
+        <canvas id="perf-line"></canvas>
+      </div>
+    </div>`;
+
   if (isDesktop) {
     const topAssets = `
       <div class="card">
@@ -179,16 +190,6 @@ function renderDashboard(isDesktop) {
         </div>
       </div>`;
   }
-
-  const perfLine = `
-    <div class="card">
-      <div class="section-title" style="margin-bottom:10px;">
-        Liquidità — ultimi 6 mesi
-      </div>
-      <div style="height:140px;position:relative;">
-        <canvas id="perf-line"></canvas>
-      </div>
-    </div>`;
 
   return `
     <div class="section-body">
